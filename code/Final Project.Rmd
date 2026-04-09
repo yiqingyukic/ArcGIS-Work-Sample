@@ -1,0 +1,133 @@
+---
+title: "Final Project"
+author: "Bruno Xie"
+date: "2023-05-11"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(dplyr)
+library(openxlsx)
+```
+
+Data Cleaning - Potholes Reported
+```{r}
+potholes_reported = read.csv("~/Desktop/PPHA 38520 GIS Applications in the Social Sciences/Final Project/311_Service_Requests.csv")
+
+potholes_reported <- potholes_reported[complete.cases(potholes_reported$LATITUDE), ]
+potholes_reported <- potholes_reported[complete.cases(potholes_reported$LONGITUDE), ]
+
+write.xlsx(potholes_reported, file="~/Desktop/PPHA 38520 GIS Applications in the Social Sciences/Final Project/Potholes_Reported.xlsx", sheetName = "Sheet1")
+```
+
+Data Cleaning - Census Tract - Income
+```{r}
+income = read.csv("~/Desktop/PPHA 38520 GIS Applications in the Social Sciences/Final Project/Income/ACSDP5Y2021.DP03-Data.csv")
+
+income = income %>% 
+  select('GEO_ID', 'NAME', 'DP03_0001E', 'DP03_0051E', 'DP03_0063E', 'DP03_0005PE', 'DP03_0119PE')
+
+income$GEO_ID <- gsub("1400000US", "", income$GEO_ID)
+
+income$NAME <- gsub(", Cook County, Illinois", "", income$NAME)
+
+colnames(income)[colnames(income) == "DP03_0001E"] <- "pop_over_16"
+colnames(income)[colnames(income) == "DP03_0051E"] <- "num_household"
+colnames(income)[colnames(income) == "DP03_0063E"] <- "mean_household_income"
+colnames(income)[colnames(income) == "DP03_0005PE"] <- "unemp_rate"
+colnames(income)[colnames(income) == "DP03_0119PE"] <- "poverty_rate"
+
+income <- income[-c(1:2), ]
+```
+ 
+Data Cleaning - Census Tract - Demographic
+```{r}
+demo = read.csv("~/Desktop/PPHA 38520 GIS Applications in the Social Sciences/Final Project/Demographic/ACSDP5Y2021.DP05-Data.csv")
+
+demo = demo %>% 
+  select('GEO_ID', 'NAME', 'DP05_0004E', 'DP05_0018E', 'DP05_0071PE', 'DP05_0077PE', 'DP05_0078PE', 'DP05_0080PE')
+
+demo$GEO_ID <- gsub("1400000US", "", demo$GEO_ID)
+
+demo$NAME <- gsub(", Cook County, Illinois", "", demo$NAME)
+
+colnames(demo)[colnames(demo) == "DP05_0004E"] <- "sex_ratio"
+colnames(demo)[colnames(demo) == "DP05_0018E"] <- "median_age"
+colnames(demo)[colnames(demo) == "DP05_0071PE"] <- "hispanic_ratio"
+colnames(demo)[colnames(demo) == "DP05_0077PE"] <- "white_ratio"
+colnames(demo)[colnames(demo) == "DP05_0078PE"] <- "black_ratio"
+colnames(demo)[colnames(demo) == "DP05_0080PE"] <- "asian_ratio"
+
+demo <- demo[-c(1:2), ]
+```
+
+Data Cleaning - Census Tract - Housing
+```{r}
+housing = read.csv("~/Desktop/PPHA 38520 GIS Applications in the Social Sciences/Final Project/Housing/ACSDP5Y2021.DP04-Data.csv")
+
+housing = housing %>% 
+  select('GEO_ID', 'NAME', 'DP04_0089E')
+
+housing$GEO_ID <- gsub("1400000US", "", housing$GEO_ID)
+
+housing$NAME <- gsub(", Cook County, Illinois", "", housing$NAME)
+
+colnames(housing)[colnames(housing) == "DP04_0089E"] <- "house_value"
+
+housing <- housing[-c(1:2), ]
+```
+
+join the data
+```{r}
+demographic_data <- income %>% 
+  left_join(demo, by='GEO_ID') %>% 
+  left_join(housing, by='GEO_ID')
+
+demographic_data$NAME.y <- NULL
+demographic_data$NAME <- NULL
+colnames(demographic_data)[colnames(demographic_data) == "NAME.x"] <- "name"
+colnames(demographic_data)[colnames(demographic_data) == "GEO_ID"] <- "geoid"
+
+demographic_data$geoid <- gsub(" ", "", demographic_data$geoid)
+demographic_data$geoid <- gsub(",", "", demographic_data$geoid)
+
+demographic_data <- demographic_data[complete.cases(demographic_data$geoid), ]
+
+demographic_data$mean_household_income <- gsub(" ", "", demographic_data$mean_household_income)
+demographic_data$mean_household_income <- gsub(",", "", demographic_data$mean_household_income)
+demographic_data$mean_household_income <- as.integer(demographic_data$mean_household_income)
+demographic_data <- demographic_data[complete.cases(demographic_data$mean_household_income), ]
+
+write.csv(demographic_data, file="~/Desktop/PPHA 38520 GIS Applications in the Social Sciences/Final Project/Demographic.csv")
+```
+
+
+
+
+
+```{r}
+library(rgdal)
+library(ggplot2)
+
+setwd("~/Desktop/PPHA 38520 GIS Applications in the Social Sciences/Final Project/Potholes Patched")
+
+# Read the shapefile into R
+potholes_patched <- readOGR(".", "geo_export_2d1d7859-d180-4a26-91eb-ff2aa4758cc7")
+
+potholes_patched_df <- as.data.frame(potholes_patched)
+
+potholes_patched_df <- potholes_patched_df[substr(potholes_patched_df$date_reque, 1, 4) == "2021", ]
+
+library(sp)
+
+potholes_patched_shp <- SpatialPointsDataFrame(coords = potholes_patched_df[, c("longitude", "latitude")],
+                                 data = potholes_patched_df[, c("address", "date_reque", "time_reque", "date_compl", "time_compl", "number_of_", "longitude", "longitude", "coords.x1", "coords.x2")])
+
+writeOGR(obj = potholes_patched_shp, dsn = "~/Desktop/PPHA 38520 GIS Applications in the Social Sciences/Final Project/Potholes Patched", layer = "Potholes_Patched", driver = "ESRI Shapefile")
+```
+
